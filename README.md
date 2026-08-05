@@ -75,8 +75,46 @@ The repository uses three branches:
 
 GitHub environments (`dev`, `staging`) must be created in repo settings with:
 - Required reviewers (staging only)
-- Environment secrets: `DATABASE_URL`, `AUTH_SECRET`, `STRIPE_SECRET_KEY`, etc.
+- Environment secrets: `DATABASE_URL`, `AUTH_SECRET`, `STRIPE_SECRET_KEY`, `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, etc.
 - Environment variables: `NEXT_PUBLIC_APP_URL`, `VIDEO_PROVIDER`
+
+### CI/CD
+
+`.github/workflows/ci.yml` runs on push to `dev`/`staging` and on pull requests:
+
+1. **`test`** — `prisma generate` → `next typegen` → `tsc --noEmit` → vitest → `next build`. This is the required status check for both environments.
+2. **`deploy-dev` / `deploy-staging`** — each runs only when its branch is pushed, runs `prisma migrate deploy` against the environment's `DATABASE_URL`, then deploys to Vercel with `vercel build --prod` + `vercel deploy --prebuilt --prod`.
+
+### Vercel (hosting)
+
+Two Vercel projects, one per environment (production branch set to the matching git branch):
+
+| Vercel project   | Git branch | Stable URL                |
+| ---------------- | ---------- | ------------------------- |
+| `pawcall-dev`    | `dev`      | `pawcall-dev.vercel.app`  |
+| `pawcall-staging`| `staging`  | `pawcall-staging.vercel.app` |
+
+1. Authenticate locally: `npx vercel@latest login` (or set a `VERCEL_TOKEN` from the Vercel dashboard → Account → Tokens).
+2. In each project, set **Environment Variables** (Production):
+   `DATABASE_URL`, `AUTH_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
+3. Add the following **GitHub environment secrets** (repo → Settings → Environments → `dev` / `staging`), so CI can deploy and migrate:
+   - `VERCEL_TOKEN`, `VERCEL_ORG_ID` (from `npx vercel@latest whoami` / org settings)
+   - `VERCEL_PROJECT_ID` (from each project's Settings → General)
+   - `DATABASE_URL` (the matching Neon database URL)
+
+### Neon (Postgres)
+
+Each environment gets its own Neon database so schema changes can be tested
+independently. Provision via `npx neonctl@latest auth login`, then:
+
+```bash
+npx neonctl@latest projects create --name pawcall-dev --set-as-default
+npx neonctl@latest branches create --name dev
+npx neonctl@latest connection-string  # copy as dev DATABASE_URL
+```
+
+Repeat for `pawcall-staging`. Run migrations with `npx prisma migrate deploy`
+using the matching `DATABASE_URL`.
 
 ### Staging → Production Promotion
 
