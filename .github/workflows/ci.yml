@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, staging]
+  pull_request:
+    branches: [dev, staging, main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npx prisma generate
+        name: Generate Prisma client
+
+      - run: npx next typegen
+        name: Generate Next.js route types
+
+      - run: npx tsc --noEmit
+        name: Type-check
+
+      - run: npm test
+        name: Run tests
+
+      - run: npx next build
+        name: Build
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?schema=public
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+
+  deploy-staging:
+    needs: test
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Deploy to staging
+        run: |
+          echo "Deploying staging environment..."
+          # Add deployment commands here (e.g., npm run build, deploy to host)
+
+      - name: Run post-deploy smoke test
+        run: |
+          echo "Smoke testing staging..."
+          # Add smoke test commands here
+
+  deploy-dev:
+    needs: test
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    environment:
+      name: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Deploy to dev
+        run: |
+          echo "Deploying dev environment..."
+          # Add deployment commands here (e.g., npm run build, deploy to host)
