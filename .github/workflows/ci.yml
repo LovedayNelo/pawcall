@@ -39,7 +39,7 @@ jobs:
 
   deploy:
     needs: test
-    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging'
+    if: (github.ref == 'refs/heads/dev' && matrix.env == 'dev') || (github.ref == 'refs/heads/staging' && matrix.env == 'staging')
     runs-on: ubuntu-latest
     strategy:
       matrix:
