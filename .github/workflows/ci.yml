@@ -37,13 +37,23 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?schema=public
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
 
-  deploy-staging:
+  deploy:
     needs: test
-    if: github.ref == 'refs/heads/staging'
+    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - env: dev
+          - env: staging
     environment:
-      name: staging
+      name: ${{ matrix.env }}
       url: ${{ steps.deploy.outputs.url }}
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - uses: actions/checkout@v5
 
@@ -54,33 +64,28 @@ jobs:
 
       - run: npm ci
 
-      - name: Deploy to staging
+      - run: npx prisma generate
+        name: Generate Prisma client
+
+      - name: Check Vercel credentials
         run: |
-          echo "Deploying staging environment..."
-          # Add deployment commands here (e.g., npm run build, deploy to host)
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::error::Vercel not configured. Set VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID secrets on the '${{ matrix.env }}' GitHub environment."
+            exit 1
+          fi
 
-      - name: Run post-deploy smoke test
+      - name: Run database migrations
+        run: npx prisma migrate deploy
+
+      - name: Link Vercel project
         run: |
-          echo "Smoke testing staging..."
-          # Add smoke test commands here
+          mkdir -p .vercel
+          printf '{"projectId":"%s","orgId":"%s"}' "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" > .vercel/project.json
 
-  deploy-dev:
-    needs: test
-    if: github.ref == 'refs/heads/dev'
-    runs-on: ubuntu-latest
-    environment:
-      name: dev
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "24"
-          cache: "npm"
-
-      - run: npm ci
-
-      - name: Deploy to dev
+      - name: Deploy to Vercel
+        id: deploy
         run: |
-          echo "Deploying dev environment..."
-          # Add deployment commands here (e.g., npm run build, deploy to host)
+          npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
+          URL=$(npx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN" --yes)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
