@@ -19,6 +19,12 @@ jobs:
 
       - run: npm ci
 
+      - run: npx prisma generate
+        name: Generate Prisma client
+
+      - run: npx next typegen
+        name: Generate Next.js route types
+
       - run: npx tsc --noEmit
         name: Type-check
 
