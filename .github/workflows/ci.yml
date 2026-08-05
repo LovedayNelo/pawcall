@@ -37,17 +37,12 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?schema=public
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
 
-  deploy:
+  deploy-dev:
     needs: test
-    if: (github.ref == 'refs/heads/dev' && matrix.env == 'dev') || (github.ref == 'refs/heads/staging' && matrix.env == 'staging')
+    if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - env: dev
-          - env: staging
     environment:
-      name: ${{ matrix.env }}
+      name: dev
       url: ${{ steps.deploy.outputs.url }}
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -70,7 +65,55 @@ jobs:
       - name: Check Vercel credentials
         run: |
           if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
-            echo "::error::Vercel not configured. Set VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID secrets on the '${{ matrix.env }}' GitHub environment."
+            echo "::error::Vercel not configured. Set VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID secrets on the 'dev' GitHub environment."
+            exit 1
+          fi
+
+      - name: Run database migrations
+        run: npx prisma migrate deploy
+
+      - name: Link Vercel project
+        run: |
+          mkdir -p .vercel
+          printf '{"projectId":"%s","orgId":"%s"}' "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" > .vercel/project.json
+
+      - name: Deploy to Vercel
+        id: deploy
+        run: |
+          npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
+          URL=$(npx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN" --yes)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+  deploy-staging:
+    needs: test
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npx prisma generate
+        name: Generate Prisma client
+
+      - name: Check Vercel credentials
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::error::Vercel not configured. Set VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID secrets on the 'staging' GitHub environment."
             exit 1
           fi
 
