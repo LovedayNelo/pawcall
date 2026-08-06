@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { prisma } from "@/lib/db/prisma";
+import { getTenantContext } from "@/lib/tenant/context";
 import { evaluateTriage, dispositionAllowsOnlineBooking, type IntakeAnswers } from "@/domain/triage/triage";
 import { evaluateCompliance } from "@/domain/compliance/compliance";
 import { computeSplit, applyDiscount, DEFAULT_PLATFORM_RATE_BPS } from "@/domain/payments/split";
-import { randomUUID } from "crypto";
 
-const CONSULT_PRICE_KOBOO = 9800; // ₦98 flat rate for MVP (9800 kobo = ₦98.00)
+const CONSULT_PRICE_KOBOO = 9800;
+
+async function getPrisma() {
+  const { tenantPrisma } = await getTenantContext();
+  if (!tenantPrisma) {
+    throw new Error("No tenant context available");
+  }
+  return tenantPrisma;
+}
 
 export async function POST(req: NextRequest) {
   const session = await getSession();
@@ -15,7 +22,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { petId, type = "SCHEDULED", intakeAnswers, promoCode, vetId, waitEstimateMinutes } = body;
 
-// Verify pet belongs to owner
+  const prisma = await getPrisma();
+  // Verify pet belongs to owner
   const pet = await prisma.pet.findFirst({
     where: { id: petId, ownerId: session.userId, deletedAt: null },
     include: { owner: true },
@@ -58,7 +66,7 @@ export async function POST(req: NextRequest) {
 
   const split = computeSplit({
     amountCents,
-    providerChargeCents: 30, // ₦0.30 processing fee
+    providerChargeCents: 30,
     platformRateBps: DEFAULT_PLATFORM_RATE_BPS,
   });
 
@@ -66,7 +74,7 @@ export async function POST(req: NextRequest) {
   const result = await prisma.$transaction(async (tx) => {
     const consult = await tx.consult.create({
       data: {
-        type: type as any,
+        type: type as "ON_DEMAND" | "SCHEDULED" | "FOLLOW_UP",
         status: "QUEUED",
         ownerId: session.userId,
         petId,
@@ -120,8 +128,6 @@ export async function POST(req: NextRequest) {
     paymentId: result.payment.id,
     amountCents: split.amountCents,
     currency: "NGN",
-    // In production: create Stripe PaymentIntent here and return client_secret
-    // For dev: mock checkout URL
     checkoutUrl: `/owner/checkout?paymentId=${result.payment.id}`,
     compliance: {
       adviceDisclaimerRequired: compliance.adviceDisclaimerRequired,

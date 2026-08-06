@@ -3,12 +3,22 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
+const schemaArg = process.argv.find((a) => a.startsWith("--schema="));
+const schema = schemaArg ? schemaArg.split("=")[1] : "prisma/schema.prisma";
+
+const isPlatform = schema === "prisma/platform.schema.prisma";
+const isTenant = schema === "prisma/tenant.schema.prisma";
+
 export default defineConfig({
-  schema: "prisma/schema.prisma",
+  schema,
   migrations: {
-    path: "prisma/migrations",
+    path: isPlatform
+      ? "prisma/platform/migrations"
+      : isTenant
+        ? "prisma/tenant/migrations"
+        : "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    url: isPlatform ? process.env.PLATFORM_DATABASE_URL : process.env.DATABASE_URL,
   },
 });

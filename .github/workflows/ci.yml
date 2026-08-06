@@ -9,6 +9,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?schema=public
+      PLATFORM_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres_platform?schema=public
+      AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
     steps:
       - uses: actions/checkout@v5
 
@@ -19,8 +23,8 @@ jobs:
 
       - run: npm ci
 
-      - run: npx prisma generate
-        name: Generate Prisma client
+      - run: npm run prisma:generate
+        name: Generate Prisma clients (base, platform, tenant)
 
       - run: npx next typegen
         name: Generate Next.js route types
@@ -33,9 +37,6 @@ jobs:
 
       - run: npx next build
         name: Build
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?schema=public
-          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
 
   deploy-dev:
     needs: test
@@ -49,6 +50,7 @@ jobs:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PLATFORM_DATABASE_URL: ${{ secrets.PLATFORM_DATABASE_URL }}
     steps:
       - uses: actions/checkout@v5
 
@@ -59,8 +61,8 @@ jobs:
 
       - run: npm ci
 
-      - run: npx prisma generate
-        name: Generate Prisma client
+      - run: npm run prisma:generate
+        name: Generate Prisma clients (base, platform, tenant)
 
       - name: Check Vercel credentials
         run: |
@@ -70,7 +72,9 @@ jobs:
           fi
 
       - name: Run database migrations
-        run: npx prisma migrate deploy
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate deploy --schema=prisma/platform.schema.prisma
 
       - name: Link Vercel project
         run: |
@@ -97,6 +101,7 @@ jobs:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PLATFORM_DATABASE_URL: ${{ secrets.PLATFORM_DATABASE_URL }}
     steps:
       - uses: actions/checkout@v5
 
@@ -107,8 +112,8 @@ jobs:
 
       - run: npm ci
 
-      - run: npx prisma generate
-        name: Generate Prisma client
+      - run: npm run prisma:generate
+        name: Generate Prisma clients (base, platform, tenant)
 
       - name: Check Vercel credentials
         run: |
@@ -118,7 +123,9 @@ jobs:
           fi
 
       - name: Run database migrations
-        run: npx prisma migrate deploy
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate deploy --schema=prisma/platform.schema.prisma
 
       - name: Link Vercel project
         run: |

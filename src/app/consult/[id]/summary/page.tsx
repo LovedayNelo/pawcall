@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db/prisma";
+import { getTenantContext } from "@/lib/tenant/context";
 import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import HeaderNav from "@/components/HeaderNav";
@@ -9,6 +9,8 @@ export default async function WriteSummaryPage({ params }: { params: Promise<{ i
   if (!session?.userId) redirect("/login");
 
   const { id } = await params;
+  const { tenantPrisma: prisma } = await getTenantContext();
+  if (!prisma) redirect("/login");
   const consult = await prisma.consult.findUnique({
     where: { id },
     include: { pet: true, vet: { select: { name: true } }, intakeForm: { include: { triage: true } } },
@@ -106,7 +108,7 @@ export default async function WriteSummaryPage({ params }: { params: Promise<{ i
           <p className="text-sm text-muted-foreground">
             You may not prescribe controlled substances via video. Non-controlled
             prescribing is only permitted where the jurisdiction allows it and a
-            valid VCPR exists. Enter any proposed medication in "Plan" for the
+            valid VCPR exists. Enter any proposed medication in &quot;Plan&quot; for the
             owner to take to an in-person vet if prescribing is restricted.
           </p>
         </div>
@@ -117,7 +119,9 @@ export default async function WriteSummaryPage({ params }: { params: Promise<{ i
 
 async function saveSummary(formData: FormData) {
   "use server";
-  const { prisma } = await import("@/lib/db/prisma");
+  const { getTenantContext } = await import("@/lib/tenant/context");
+  const { tenantPrisma: prisma } = await getTenantContext();
+  if (!prisma) redirect("/unauthorized");
   const { getSession } = await import("@/lib/auth/session");
   const session = await getSession();
   if (!session?.userId) redirect("/login");

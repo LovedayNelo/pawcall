@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db/prisma";
+import { getTenantContext } from "@/lib/tenant/context";
 import { notFound } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import BookConsultForm from "./BookConsultForm";
@@ -8,6 +8,8 @@ export default async function BookConsultPage({ params }: { params: Promise<{ id
   if (!session?.userId) notFound();
 
   const { id } = await params;
+  const { tenantPrisma: prisma } = await getTenantContext();
+  if (!prisma) notFound();
   const pet = await prisma.pet.findFirst({
     where: { id, ownerId: session.userId, deletedAt: null },
   });

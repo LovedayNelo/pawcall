@@ -1,5 +1,4 @@
 import HeaderNav from "@/components/HeaderNav";
-import Link from "next/link";
 
 export default function LegalPage() {
   return (
@@ -33,7 +32,7 @@ export default function LegalPage() {
           </section>
 
           <section>
-            <h2>Licensing — The Pet's Location Governs</h2>
+            <h2>Licensing — The Pet&apos;s Location Governs</h2>
             <p>
               A veterinarian must be licensed in the jurisdiction where the
               <strong> pet</strong> (not the vet) is physically located. Our matcher

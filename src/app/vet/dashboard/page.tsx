@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db/prisma";
+import { getTenantContext } from "@/lib/tenant/context";
 import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import HeaderNav from "@/components/HeaderNav";
@@ -10,6 +10,9 @@ import { formatKobo } from "@/lib/formatCurrency";
 export default async function VetDashboardPage() {
   const session = await getSession();
   if (!session?.userId || session.role !== "VET") redirect("/unauthorized");
+
+  const { tenantPrisma: prisma } = await getTenantContext();
+  if (!prisma) redirect("/login");
 
   const [profile, consults] = await Promise.all([
     prisma.vetProfile.findUnique({

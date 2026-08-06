@@ -1,28 +1,13 @@
-/**
- * Stripe payment integration for PawCall.
- *
- * Responsibilities:
- *  - Create PaymentIntent for a consult (used by /api/owner/checkout GET and POST)
- *  - Confirm PaymentIntent with a payment_method (card) provided via Stripe Elements
- *  - Webhook handler for payment_intent.succeeded / payment_intent.payment_failed
- *
- * Env:
- *  - STRIPE_SECRET_KEY        (required in prod)
- *  - STRIPE_WEBHOOK_SECRET    (required to verify webhook events)
- *  - STRIPE_APPLICATION_FEE_AMOUNT_CENTS  (platform fee; defaults to split's platformFeeCents)
- */
 import { NextRequest, NextResponse } from "next/server";
+import Stripe from "stripe";
 
 const PROVIDER_CHARGE_CENTS = 30;
 
-let stripeClient: any = null;
+let stripeClient: Stripe | null = null;
 
-function getStripe() {
+function getStripe(): Stripe {
   if (!stripeClient) {
-    const { Stripe } = require("stripe");
-    stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-      apiVersion: "2026-07-29.dahlia",
-    });
+    stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY!);
   }
   return stripeClient;
 }
@@ -64,7 +49,7 @@ export async function createPaymentIntent(opts: CreatePaymentIntentOpts): Promis
   });
 
   return {
-    clientSecret: intent.client_secret,
+    clientSecret: intent.client_secret!,
     paymentIntentId: intent.id,
   };
 }
@@ -89,7 +74,10 @@ export async function confirmPaymentIntent(
   };
 }
 
-export async function handleStripeWebhook(req: NextRequest): Promise<NextResponse> {
+export async function handleStripeWebhook(req: NextRequest, tenantDatabaseUrl: string): Promise<NextResponse> {
+  const { getTenantPrisma } = await import("@/lib/db/prisma");
+  const prisma = getTenantPrisma(tenantDatabaseUrl);
+
   const sig = req.headers.get("stripe-signature");
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -104,20 +92,19 @@ export async function handleStripeWebhook(req: NextRequest): Promise<NextRespons
   const stripe = getStripe();
   const buf = await req.arrayBuffer();
 
-  let event: any;
+  let event: Stripe.Event;
   try {
     event = stripe.webhooks.constructEvent(Buffer.from(buf), sig, webhookSecret);
-  } catch (err: any) {
-    console.error("Webhook signature verification failed:", err.message);
+  } catch (err) {
+    console.error("Webhook signature verification failed:", err instanceof Error ? err.message : "Unknown error");
     return new NextResponse("Invalid signature", { status: 400 });
   }
 
   if (event.type === "payment_intent.succeeded") {
-    const intent = event.data.object as any;
+    const intent = event.data.object as Stripe.PaymentIntent;
     const consultId = intent.metadata?.consultId;
 
     if (consultId) {
-      const { prisma } = await import("@/lib/db/prisma");
       await prisma.payment.updateMany({
         where: { stripePaymentIntentId: intent.id },
         data: { status: "CAPTURED" },
@@ -130,11 +117,10 @@ export async function handleStripeWebhook(req: NextRequest): Promise<NextRespons
   }
 
   if (event.type === "payment_intent.payment_failed") {
-    const intent = event.data.object as any;
+    const intent = event.data.object as Stripe.PaymentIntent;
     const consultId = intent.metadata?.consultId;
 
     if (consultId) {
-      const { prisma } = await import("@/lib/db/prisma");
       await prisma.payment.updateMany({
         where: { stripePaymentIntentId: intent.id },
         data: { status: "FAILED" },

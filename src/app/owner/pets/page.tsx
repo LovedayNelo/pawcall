@@ -1,7 +1,8 @@
 import HeaderNav from "@/components/HeaderNav";
-import { prisma } from "@/lib/db/prisma";
+import { getTenantContext } from "@/lib/tenant/context";
 import { getSession } from "@/lib/auth/session";
 import Link from "next/link";
+import Image from "next/image";
 
 async function OwnerPetsData() {
   const session = await getSession();
@@ -13,6 +14,9 @@ async function OwnerPetsData() {
       </div>
     );
   }
+
+  const { tenantPrisma: prisma } = await getTenantContext();
+  if (!prisma) return null;
 
   const pets = await prisma.pet.findMany({
     where: { ownerId: session.userId, deletedAt: null },
@@ -35,7 +39,7 @@ async function OwnerPetsData() {
             >
               <div className="flex items-center gap-3">
                 {pet.photoUrl ? (
-                  <img src={pet.photoUrl} alt={pet.name} className="h-16 w-16 rounded-full object-cover" />
+                  <Image src={pet.photoUrl} alt={pet.name} width={64} height={64} unoptimized className="h-16 w-16 rounded-full object-cover" />
                 ) : (
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-2xl">🐾</div>
                 )}

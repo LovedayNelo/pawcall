@@ -1,0 +1,172 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma/platform"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+  EXPIRED
+  DELETED
+}
+
+enum TenantPlan {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+  CUSTOM
+}
+
+model Tenant {
+  id                String       @id @default(cuid())
+  name              String
+  slug              String       @unique
+  status            TenantStatus @default(TRIAL)
+  plan              TenantPlan   @default(STARTER)
+  customDomain      String?
+  subdomain         String       @unique
+  logoUrl           String?
+  primaryColor      String       @default("#10B981")
+  secondaryColor    String       @default("#059669")
+  contactEmail      String
+  contactPhone      String?
+  address           String?
+  city              String?
+  country           String       @default("NG")
+  timezone          String       @default("Africa/Lagos")
+  currency          String       @default("NGN")
+  locale            String       @default("en")
+  maxVets           Int          @default(5)
+  maxOwners         Int          @default(100)
+  maxConsultsPerMonth Int        @default(500)
+  stripeCustomerId  String?
+  stripeSubscriptionId String?
+  trialEndsAt       DateTime?
+  subscriptionEndsAt DateTime?
+  databaseUrl       String       @unique
+  databaseName      String       @unique
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  deletedAt         DateTime?
+
+  domains           TenantDomain[]
+  users             PlatformUser[]
+  auditLogs         TenantAuditLog[]
+  settings          TenantSetting[]
+  usage             TenantUsage[]
+  invitations       TenantInvitation[]
+}
+
+model TenantDomain {
+  id        String   @id @default(cuid())
+  tenantId  String
+  domain    String   @unique
+  verified  Boolean  @default(false)
+  primary   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model PlatformUser {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  name          String
+  role          String   @default("PLATFORM_ADMIN")
+  tenantId      String?
+  isActive      Boolean  @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant?  @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([email])
+}
+
+model TenantSetting {
+  id        String   @id @default(cuid())
+  tenantId  String   @unique
+  key       String
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key])
+}
+
+model TenantUsage {
+  id                String   @id @default(cuid())
+  tenantId          String
+  periodStart       DateTime
+  periodEnd         DateTime
+  vetsCount         Int      @default(0)
+  ownersCount       Int      @default(0)
+  consultsCount     Int      @default(0)
+  revenueCents      Int      @default(0)
+  storageBytes      Int      @default(0)
+  apiCalls          Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, periodStart])
+  @@index([tenantId, periodStart])
+}
+
+model TenantAuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  actorId   String?
+  action    String
+  entityType String
+  entityId  String?
+  details   Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([actorId])
+}
+
+model TenantInvitation {
+  id            String   @id @default(cuid())
+  tenantId      String
+  email         String
+  role          String
+  token         String   @unique
+  invitedById   String
+  acceptedAt    DateTime?
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, email])
+  @@index([token])
+}
+
+model PlatformSettings {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  value           Json
+  description     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

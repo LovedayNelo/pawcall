@@ -19,7 +19,6 @@ export default function WaitingRoomPage({
   const router = useRouter();
   const [params, setParams] = useState<{ consultId?: string }>({});
   const [consult, setConsult] = useState<ConsultStatus | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,8 +41,6 @@ export default function WaitingRoomPage({
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Something went wrong");
-      } finally {
-        setLoading(false);
       }
     };
 

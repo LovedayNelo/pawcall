@@ -1,0 +1,534 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma/tenant"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// PawCall data model. Phase 1 MVP.
+// Money is stored as integer minor units (kobo). No floats for currency.
+// ---------------------------------------------------------------------------
+
+enum Role {
+  OWNER
+  VET
+  TECH
+  ADMIN
+  PARTNER_CLINIC
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum PetSpecies {
+  DOG
+  CAT
+  BIRD
+  REPTILE
+  SMALL_MAMMAL
+  RABBIT
+  FERRET
+  AVIAN
+  EXOTIC
+  OTHER
+}
+
+enum VetVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  SUSPENDED
+}
+
+enum ConsultType {
+  ON_DEMAND
+  SCHEDULED
+  FOLLOW_UP
+}
+
+enum ConsultStatus {
+  QUEUED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  DROPPED
+}
+
+enum ConsultOutcome {
+  MONITOR_AT_HOME
+  IN_PERSON_NON_URGENT
+  IN_PERSON_URGENT
+  EMERGENCY
+  NOT_DETERMINED
+}
+
+enum TriageSeverity {
+  LOW
+  MODERATE
+  HIGH
+  CRITICAL
+}
+
+enum TriageDisposition {
+  PROCEED_ONLINE
+  ROUTINE_IN_PERSON
+  URGENT_IN_PERSON
+  EMERGENCY_INTERRUPT
+}
+
+enum PaymentStatus {
+  PENDING
+  CAPTURED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  FAILED
+}
+
+enum PayoutStatus {
+  SCHEDULED
+  PAID
+  FAILED
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ReferralStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  COMPLETED
+}
+
+enum NotificationChannel {
+  PUSH
+  SMS
+  EMAIL
+}
+
+// ---------------------------------------------------------------------------
+// Users & roles
+// ---------------------------------------------------------------------------
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String?
+  phone           String?
+  name            String
+  role            Role      @default(OWNER)
+  locale          String    @default("en")
+  timezone        String    @default("UTC")
+  countryCode     String?
+  regionCode      String?
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  pets              Pet[]              @relation("PetOwner")
+  vetProfile        VetProfile?
+  consultsOwned     Consult[]          @relation("ConsultOwner")
+  consultsAsVet     Consult[]          @relation("ConsultVet")
+  reviewsGiven      Review[]           @relation("ReviewAuthor")
+  reviewsReceived   Review[]           @relation("ReviewTarget")
+  messagesSent      Message[]          @relation("MessageSender")
+  payments          Payment[]
+  payouts           Payout[]
+  notifications     Notification[]
+  documents         Document[]         @relation("DocOwner")
+  auditLogs         AuditLog[]
+}
+
+// ---------------------------------------------------------------------------
+// Pets
+// ---------------------------------------------------------------------------
+
+model Pet {
+  id                 String    @id @default(cuid())
+  ownerId            String
+  name               String
+  species            PetSpecies
+  breed              String?
+  birthDate          DateTime?
+  sex                Gender?
+  spayedNeutered     Boolean?
+  weightKg           Float?
+  allergies          String[]  @default([])
+  chronicConditions  String[]  @default([])
+  medications        String[]  @default([])
+  vaccinationHistory String[]  @default([])
+  photoUrl           String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
+
+  owner            User             @relation("PetOwner", fields: [ownerId], references: [id])
+  weightHistory    PetWeight[]
+  consults         Consult[]
+  documents        Document[]
+  medicalRecords   MedicalRecord[]
+  intakeForms      IntakeForm[]
+}
+
+model PetWeight {
+  id         String   @id @default(cuid())
+  petId      String
+  weightKg   Float
+  recordedAt DateTime @default(now())
+
+  pet Pet @relation(fields: [petId], references: [id])
+}
+
+// ---------------------------------------------------------------------------
+// Vets & licensing
+// ---------------------------------------------------------------------------
+
+model VetProfile {
+  id                           String                @id @default(cuid())
+  userId                       String                @unique
+  bio                          String?
+  specialty                    String?
+  yearsExperience              Int?
+  languages                    String[]              @default(["en"])
+  malpracticeInsuranceVerified Boolean               @default(false)
+  idVerified                   Boolean               @default(false)
+  verificationStatus           VetVerificationStatus @default(PENDING)
+  isOnline                     Boolean               @default(false)
+  stripeConnectAccountId       String?
+  defaultCommissionRateBps     Int?
+  createdAt                    DateTime              @default(now())
+  updatedAt                    DateTime              @updatedAt
+
+  user           User             @relation(fields: [userId], references: [id])
+  licenses       License[]
+  availabilities Availability[]
+}
+
+model License {
+  id                 String                @id @default(cuid())
+  vetProfileId       String
+  licenseNumber      String
+  countryCode        String
+  regionCode         String
+  issuedAt           DateTime?
+  expiresAt          DateTime?
+  verificationStatus VetVerificationStatus @default(PENDING)
+  verificationNote   String?
+  createdAt          DateTime              @default(now())
+
+  vetProfile VetProfile @relation(fields: [vetProfileId], references: [id])
+}
+
+model Availability {
+  id           String   @id @default(cuid())
+  vetProfileId String
+  dayOfWeek    Int?
+  startTime    String?
+  endTime      String?
+  date         DateTime?
+  isRecurring  Boolean  @default(false)
+  timezone     String   @default("UTC")
+  createdAt    DateTime @default(now())
+
+  vetProfile VetProfile @relation(fields: [vetProfileId], references: [id])
+}
+
+// ---------------------------------------------------------------------------
+// Consults
+// ---------------------------------------------------------------------------
+
+model Consult {
+  id                  String        @id @default(cuid())
+  type                ConsultType
+  status              ConsultStatus @default(QUEUED)
+  outcome             ConsultOutcome @default(NOT_DETERMINED)
+
+  ownerId             String
+  vetId               String?
+  petId               String?
+
+  countryCode         String?
+  regionCode          String?
+
+  scheduledStartAt    DateTime?
+  scheduledEndAt      DateTime?
+  startedAt           DateTime?
+  endedAt             DateTime?
+  durationMinutes     Int?
+  waitEstimateMinutes Int?
+
+  priceCents          Int
+  currency            String        @default("NGN")
+
+  recordingConsentOwner Boolean     @default(false)
+  recordingConsentVet   Boolean     @default(false)
+
+  videoProvider       String?
+  videoRoomId         String?
+
+  paymentId           String?       @unique
+
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  owner       User             @relation("ConsultOwner", fields: [ownerId], references: [id])
+  vet         User?            @relation("ConsultVet", fields: [vetId], references: [id])
+  pet         Pet?             @relation(fields: [petId], references: [id])
+  intakeForm  IntakeForm?
+  summary     ConsultSummary?
+  payment     Payment?
+  referral    Referral?
+  review      Review?
+  messages    Message[]
+  auditLogs   AuditLog[]
+
+  @@index([ownerId, status])
+  @@index([vetId, status])
+  @@index([outcome])
+}
+
+model IntakeForm {
+  id              String   @id @default(cuid())
+  consultId       String?  @unique
+  petId           String?
+  symptomCategory String?
+  answers         Json
+  photos          Json?
+  createdAt       DateTime @default(now())
+
+  consult Consult? @relation(fields: [consultId], references: [id])
+  pet     Pet?     @relation(fields: [petId], references: [id])
+  triage  TriageResult?
+}
+
+model TriageResult {
+  id              String           @id @default(cuid())
+  intakeFormId    String           @unique
+  severity        TriageSeverity
+  disposition     TriageDisposition
+  matchedRules    String[]
+  redFlagSymptoms String[]
+  recommendation  String
+  createdAt       DateTime         @default(now())
+
+  intakeForm IntakeForm @relation(fields: [intakeFormId], references: [id])
+}
+
+model ConsultSummary {
+  id                   String         @id @default(cuid())
+  consultId            String         @unique
+  subjective           String
+  objective            String
+  assessment           String
+  plan                 String
+  homeCareAdvice       String?
+  redFlagsToWatch      String?
+  recommendation       ConsultOutcome
+  recommendationDetail String?
+  prescribedMeds       Json?
+  generatedAt          DateTime       @default(now())
+
+  consult Consult @relation(fields: [consultId], references: [id])
+}
+
+// ---------------------------------------------------------------------------
+// Payments & payouts
+// ---------------------------------------------------------------------------
+
+model PromoCode {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  discountType  String
+  discountValue Int
+  maxUses       Int?
+  uses          Int       @default(0)
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
+}
+
+model Payment {
+  id                    String        @id @default(cuid())
+  consultId             String?       @unique
+  ownerId               String
+  amountCents           Int
+  currency              String
+  platformFeeCents      Int
+  vetEarnCents          Int
+  providerChargeCents   Int
+  status                PaymentStatus @default(PENDING)
+  stripePaymentIntentId String?
+  promoCodeId           String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  consult Consult? @relation(fields: [consultId], references: [id])
+  owner   User     @relation(fields: [ownerId], references: [id])
+  payouts Payout[]
+  dispute Dispute?
+}
+
+model Payout {
+  id               String       @id @default(cuid())
+  vetUserId        String
+  paymentId        String?
+  amountCents      Int
+  currency         String       @default("NGN")
+  status           PayoutStatus @default(SCHEDULED)
+  stripeTransferId String?
+  scheduledFor     DateTime?
+  paidAt           DateTime?
+  createdAt        DateTime     @default(now())
+
+  vetUser User     @relation(fields: [vetUserId], references: [id])
+  payment Payment? @relation(fields: [paymentId], references: [id])
+}
+
+model Dispute {
+  id         String   @id @default(cuid())
+  paymentId  String   @unique
+  reason     String
+  status     String   @default("OPEN")
+  resolution String?
+  createdAt  DateTime @default(now())
+  resolvedAt DateTime?
+
+  payment Payment @relation(fields: [paymentId], references: [id])
+}
+
+// ---------------------------------------------------------------------------
+// Reviews, messaging, moderation
+// ---------------------------------------------------------------------------
+
+model Review {
+  id         String       @id @default(cuid())
+  consultId  String       @unique
+  reviewerId String
+  vetId      String
+  rating     Int
+  comment    String?
+  status     ReviewStatus @default(PENDING)
+  createdAt  DateTime     @default(now())
+
+  consult  Consult @relation(fields: [consultId], references: [id])
+  reviewer User    @relation("ReviewAuthor", fields: [reviewerId], references: [id])
+  vet      User    @relation("ReviewTarget", fields: [vetId], references: [id])
+}
+
+model Message {
+  id               String   @id @default(cuid())
+  consultId        String
+  senderId         String
+  body             String
+  contentType      String   @default("text")
+  moderated        Boolean  @default(false)
+  moderationResult String?
+  createdAt        DateTime @default(now())
+
+  consult Consult @relation(fields: [consultId], references: [id])
+  sender  User    @relation("MessageSender", fields: [senderId], references: [id])
+}
+
+// ---------------------------------------------------------------------------
+// Records & documents
+// ---------------------------------------------------------------------------
+
+model MedicalRecord {
+  id         String   @id @default(cuid())
+  petId      String
+  type       String
+  title      String
+  detail     Json?
+  recordedAt DateTime @default(now())
+
+  pet Pet @relation(fields: [petId], references: [id])
+}
+
+model Document {
+  id         String   @id @default(cuid())
+  ownerId    String
+  petId      String?
+  uploaderId String
+  title      String
+  url        String
+  mimeType   String   @default("application/octet-stream")
+  createdAt  DateTime @default(now())
+
+  owner User  @relation("DocOwner", fields: [ownerId], references: [id])
+  pet   Pet?  @relation(fields: [petId], references: [id])
+}
+
+// ---------------------------------------------------------------------------
+// Referrals & partner clinics
+// ---------------------------------------------------------------------------
+
+model PartnerClinic {
+  id               String   @id @default(cuid())
+  name             String
+  address          String?
+  lat              Float?
+  lng              Float?
+  phone            String?
+  email            String?
+  hours            Json?
+  acceptsReferrals Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  referrals Referral[]
+}
+
+model Referral {
+  id         String         @id @default(cuid())
+  consultId  String         @unique
+  clinicId   String?
+  clinicName String?
+  notes      String?
+  status     ReferralStatus @default(PENDING)
+  createdAt  DateTime       @default(now())
+
+  consult Consult       @relation(fields: [consultId], references: [id])
+  clinic  PartnerClinic? @relation(fields: [clinicId], references: [id])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications & audit
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id           String              @id @default(cuid())
+  userId       String
+  type         String
+  channel      NotificationChannel @default(PUSH)
+  title        String
+  body         String?
+  readAt       DateTime?
+  scheduledFor DateTime?
+  sentAt       DateTime?
+  createdAt    DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  consultId  String?
+  details    Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  actor   User?    @relation(fields: [actorId], references: [id])
+  consult Consult? @relation(fields: [consultId], references: [id])
+}

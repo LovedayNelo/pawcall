@@ -43,7 +43,7 @@ export default function Home() {
             <h3 className="font-bold mb-2">Written summary</h3>
             <p className="text-sm text-muted-foreground">
               Get a post-call visit summary with home-care advice and clear next
-              steps, plus a one-tap "find nearby vet" link.
+              steps, plus a one-tap &quot;find nearby vet&quot; link.
             </p>
           </div>
         </section>

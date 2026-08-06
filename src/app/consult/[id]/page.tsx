@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db/prisma";
+import { getTenantContext } from "@/lib/tenant/context";
 import { notFound } from "next/navigation";
 import HeaderNav from "@/components/HeaderNav";
 import Link from "next/link";
@@ -9,6 +9,8 @@ export default async function ConsultPage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const consultId = id;
 
+  const { tenantPrisma: prisma } = await getTenantContext();
+  if (!prisma) notFound();
   const consult = await prisma.consult.findUnique({
     where: { id: consultId },
     include: {

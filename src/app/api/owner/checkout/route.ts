@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { prisma } from "@/lib/db/prisma";
-import { createPaymentIntent, confirmPaymentIntent } from "@/lib/payments/stripe";
+import { getTenantContext } from "@/lib/tenant/context";
+import { createPaymentIntent, confirmPaymentIntent, isDev } from "@/lib/payments/stripe";
+
+async function getPrisma() {
+  const { tenantPrisma } = await getTenantContext();
+  if (!tenantPrisma) {
+    throw new Error("No tenant context available");
+  }
+  return tenantPrisma;
+}
 
 export async function POST(req: NextRequest) {
   const session = await getSession();
@@ -10,6 +18,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { paymentId, paymentMethodId } = body;
 
+  const prisma = await getPrisma();
   const payment = await prisma.payment.findFirst({
     where: { id: paymentId, ownerId: session.userId },
     include: { consult: true },
@@ -17,10 +26,6 @@ export async function POST(req: NextRequest) {
   if (!payment) return NextResponse.json({ error: "Payment not found" }, { status: 404 });
   if (payment.status !== "PENDING") return NextResponse.json({ error: "Payment already processed" }, { status: 400 });
   if (!payment.consultId) return NextResponse.json({ error: "Missing consult" }, { status: 400 });
-
-  // If Stripe is in dev mode, we created a mock PaymentIntent in GET
-  // If Stripe is configured, create + confirm the real PaymentIntent
-  const { isDev } = await import("@/lib/payments/stripe");
 
   if (!isDev && paymentMethodId) {
     // Create real PaymentIntent if we don't have one yet
@@ -78,6 +83,7 @@ export async function GET(req: NextRequest) {
   const paymentId = req.nextUrl.searchParams.get("paymentId");
   if (!paymentId) return NextResponse.json({ error: "Missing paymentId" }, { status: 400 });
 
+  const prisma = await getPrisma();
   const payment = await prisma.payment.findFirst({
     where: { id: paymentId, ownerId: session.userId },
     include: { consult: { include: { pet: true } } },
@@ -93,16 +99,14 @@ export async function GET(req: NextRequest) {
     clientSecret = `${stripePIId}_secret_mock`;
   } else if (stripePIId && !stripePIId.startsWith("pi_mock_")) {
     // Real PI already exists — re-derive client secret
-    const { isDev } = await import("@/lib/payments/stripe");
     if (!isDev) {
       const { Stripe } = await import("stripe");
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2026-07-29.dahlia" });
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
       const intent = await stripe.paymentIntents.retrieve(stripePIId);
       clientSecret = intent.client_secret;
     }
   } else {
     // Create a new PaymentIntent
-    const { isDev } = await import("@/lib/payments/stripe");
     if (!isDev) {
       const intent = await createPaymentIntent({
         amountCents: payment.amountCents,

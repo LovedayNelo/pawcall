@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/db/prisma";
+import { getTenantPrismaClient } from "@/lib/auth/dal";
 import { createSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 
@@ -30,6 +30,7 @@ export async function signupAction(
 
   const { name, email, password, role } = validated.data;
 
+  const prisma = await getTenantPrismaClient();
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
     return { errors: { email: ["An account with this email already exists."] } };
@@ -63,6 +64,7 @@ export async function loginAction(
   }
 
   const { email, password } = validated.data;
+  const prisma = await getTenantPrismaClient();
   const user = await prisma.user.findUnique({ where: { email } });
 
   if (!user || !user.passwordHash) {

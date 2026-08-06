@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db/prisma";
+import { getTenantContext } from "@/lib/tenant/context";
+
+async function getPrisma() {
+  const { tenantPrisma } = await getTenantContext();
+  if (!tenantPrisma) {
+    throw new Error("No tenant context available");
+  }
+  return tenantPrisma;
+}
 
 // Vet matcher: find an available, verified vet licensed in the owner's jurisdiction
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { countryCode = "US", regionCode = null, specialty } = body;
+  const { countryCode = "US", regionCode = null } = body;
 
+  const prisma = await getPrisma();
   const vets = await prisma.vetProfile.findMany({
     where: {
       verificationStatus: "VERIFIED",
@@ -36,7 +45,9 @@ export async function POST(req: NextRequest) {
     }),
   );
 
-  const best = vetStats.reduce((prev, curr) => (curr._activeConsults < prev._activeConsults ? curr : prev));
+  const best = vetStats.reduce((prev: typeof vetStats[0], curr: typeof vetStats[0]) =>
+    curr._activeConsults < prev._activeConsults ? curr : prev
+  );
   const waitEstimate = best._activeConsults * 5 + 5; // 5 min per queued consult + 5 min buffer
 
   return NextResponse.json({

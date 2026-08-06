@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { prisma } from "@/lib/db/prisma";
+import { getTenantContext } from "@/lib/tenant/context";
+
+async function getPrisma() {
+  const { tenantPrisma } = await getTenantContext();
+  if (!tenantPrisma) {
+    throw new Error("No tenant context available");
+  }
+  return tenantPrisma;
+}
 
 export async function GET() {
   const session = await getSession();
   if (!session?.userId || session.role !== "VET")
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const prisma = await getPrisma();
   const profile = await prisma.vetProfile.findUnique({
     where: { userId: session.userId },
     include: { licenses: true },
@@ -21,6 +30,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   // Vet credentials: license number + jurisdiction + (optional) malpractice proof
+  const prisma = await getPrisma();
   const profile = await prisma.vetProfile.upsert({
     where: { userId: session.userId },
     update: {
@@ -64,6 +74,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
+  const prisma = await getPrisma();
   const profile = await prisma.vetProfile.updateMany({
     where: { userId: session.userId },
     data: {

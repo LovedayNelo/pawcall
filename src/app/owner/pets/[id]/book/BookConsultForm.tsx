@@ -108,7 +108,13 @@ export default function BookConsultPage({
     setLoading(true);
     setError(null);
     try {
-      const body: any = {
+      const body: {
+        petId: string;
+        type: "SCHEDULED" | "ON_DEMAND";
+        intakeAnswers: Record<string, unknown>;
+        vetId?: string;
+        waitEstimateMinutes?: number;
+      } = {
         petId: params.id,
         type: consultType,
         intakeAnswers: intake,
@@ -250,7 +256,7 @@ export default function BookConsultPage({
                       />
                       <div>
                         <strong>On-Demand Consult</strong>
-                        <p className="text-sm text-muted-foreground">Connect with a licensed vet now. We'll match you with an available vet.</p>
+                        <p className="text-sm text-muted-foreground">Connect with a licensed vet now. We&apos;ll match you with an available vet.</p>
                       </div>
                     </label>
                   </div>
@@ -296,7 +302,7 @@ export default function BookConsultPage({
                   </div>
 
                   <hr className="border-border" />
-                  <p className="text-xs text-muted-foreground">Answer the questions below so we can triage your pet's symptoms:</p>
+                  <p className="text-xs text-muted-foreground">Answer the questions below so we can triage your pet&apos;s symptoms:</p>
 
                   <div className="space-y-3">
                     <CheckPair name="vomiting" label="Is your pet vomiting?" />

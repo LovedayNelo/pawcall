@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { decrypt } from "@/lib/auth/session";
+import { isPlatformDomain, resolveTenantFromHost } from "@/lib/tenant/context";
 
 const protectedRoutes = [
   "/owner",
@@ -10,24 +11,30 @@ const protectedRoutes = [
   "/api/admin",
 ];
 
-const publicRoutes = [
-  "/",
-  "/login",
-  "/signup",
-  "/forgot-password",
-  "/pricing",
-  "/about",
-  "/legal",
-];
-
 const vetOnlyRoutes = ["/vet", "/api/vet"];
 const adminOnlyRoutes = ["/admin", "/api/admin"];
 const ownerOnlyRoutes = ["/owner", "/api/owner"];
 
-export default async function proxy(req: NextRequest) {
+export async function proxy(req: NextRequest) {
+  const host = req.headers.get("host") || "";
+
+  if (isPlatformDomain(host)) {
+    return NextResponse.next();
+  }
+
+  const tenant = await resolveTenantFromHost(host);
+
+  if (!tenant) {
+    const url = new URL("/", req.nextUrl);
+    return NextResponse.redirect(url);
+  }
+
+  if (tenant.status !== "ACTIVE" && tenant.status !== "TRIAL") {
+    return new NextResponse("Tenant not active", { status: 503 });
+  }
+
   const path = req.nextUrl.pathname;
   const isProtected = protectedRoutes.some((r) => path.startsWith(r));
-  const isPublic = publicRoutes.some((r) => path === r || path.startsWith(r + "/"));
 
   if (!isProtected) return NextResponse.next();
 

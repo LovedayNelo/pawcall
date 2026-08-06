@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db/prisma";
+import { getTenantContext } from "@/lib/tenant/context";
 import { getSession } from "@/lib/auth/session";
 import { createVideoSession } from "@/lib/video";
 import { revalidatePath } from "next/cache";
@@ -19,6 +19,9 @@ export default async function CallPage({
   const sp = await searchParams;
   const isVet = sp.vet === "true" || session.role === "VET";
   const role = isVet ? "vet" : "owner";
+
+  const { tenantPrisma: prisma } = await getTenantContext();
+  if (!prisma) redirect("/login");
 
   const consult = await prisma.consult.findUnique({
     where: { id },
@@ -129,9 +132,11 @@ export default async function CallPage({
 async function endCall(formData: FormData) {
   "use server";
   const { getSession: gs } = await import("@/lib/auth/session");
-  const { prisma: db } = await import("@/lib/db/prisma");
+  const { getTenantContext } = await import("@/lib/tenant/context");
+  const { tenantPrisma: db } = await getTenantContext();
   const session = await gs();
   const consultId = formData.get("consultId")?.toString() ?? "";
+  if (!db) return;
   const consult = await db.consult.findUnique({ where: { id: consultId } });
   if (!consult || (consult.ownerId !== session?.userId && consult.vetId !== session?.userId && session?.role !== "ADMIN")) return;
   await db.consult.update({
@@ -145,9 +150,10 @@ async function endCall(formData: FormData) {
 async function addMessage(formData: FormData) {
   "use server";
   const { getSession: gs } = await import("@/lib/auth/session");
-  const { prisma: db } = await import("@/lib/db/prisma");
+  const { getTenantContext } = await import("@/lib/tenant/context");
+  const { tenantPrisma: db } = await getTenantContext();
   const session = await gs();
-  if (!session?.userId) return;
+  if (!session?.userId || !db) return;
 
   const consultId = formData.get("consultId")?.toString();
   const body = formData.get("body")?.toString();

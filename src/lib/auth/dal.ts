@@ -4,8 +4,16 @@ import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
-import { prisma } from "@/lib/db/prisma";
-import type { Role, User } from "@/generated/prisma/client";
+import { getTenantContext } from "@/lib/tenant/context";
+import type { Role, User } from "@/generated/prisma/tenant/client";
+
+async function getPrisma() {
+  const { tenantPrisma } = await getTenantContext();
+  if (!tenantPrisma) {
+    throw new Error("No tenant context available");
+  }
+  return tenantPrisma;
+}
 
 export const verifySession = cache(async (): Promise<{ isAuth: true; userId: string; role: Role; email: string }> => {
   const session = await getSession();
@@ -17,6 +25,7 @@ export const verifySession = cache(async (): Promise<{ isAuth: true; userId: str
 
 export const getUser = cache(async (): Promise<User | null> => {
   const session = await verifySession();
+  const prisma = await getPrisma();
   return prisma.user.findUnique({ where: { id: session.userId } });
 });
 
@@ -28,7 +37,19 @@ export const requireRole = async (...allowedRoles: Role[]): Promise<{ userId: st
   return { userId: session.userId, role: session.role };
 };
 
-export const requireOwner = () => requireRole("OWNER");
-export const requireVet = () => requireRole("VET");
-export const requireAdmin = () => requireRole("ADMIN");
-export const requireVetOrAdmin = () => requireRole("VET", "ADMIN");
+export async function requireOwner() {
+  return requireRole("OWNER");
+}
+export async function requireVet() {
+  return requireRole("VET");
+}
+export async function requireAdmin() {
+  return requireRole("ADMIN");
+}
+export async function requireVetOrAdmin() {
+  return requireRole("VET", "ADMIN");
+}
+
+export async function getTenantPrismaClient() {
+  return getPrisma();
+}

@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db/prisma";
+import { getTenantContext } from "@/lib/tenant/context";
 import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import HeaderNav from "@/components/HeaderNav";
@@ -8,12 +8,15 @@ export default async function VetOnboardingPage() {
   const session = await getSession();
   if (!session?.userId || session.role !== "VET") redirect("/unauthorized");
 
+  const { tenantPrisma: prisma } = await getTenantContext();
+  if (!prisma) redirect("/login");
+
   const profile = await prisma.vetProfile.findUnique({
     where: { userId: session.userId },
     include: { licenses: true },
   });
 
-  const status = profile?.verificationStatus ?? "PENDING";
+  const status = (profile?.verificationStatus ?? "PENDING") as "PENDING" | "VERIFIED" | "REJECTED" | "SUSPENDED";
 
   const statusMessage = {
     PENDING: "Your credentials are under review. An admin will verify your license shortly.",
@@ -124,7 +127,9 @@ export default async function VetOnboardingPage() {
 
 async function saveProfile(formData: FormData) {
   "use server";
-  const { prisma } = await import("@/lib/db/prisma");
+  const { getTenantContext } = await import("@/lib/tenant/context");
+  const { tenantPrisma: prisma } = await getTenantContext();
+  if (!prisma) redirect("/unauthorized");
   const { getSession } = await import("@/lib/auth/session");
   const session = await getSession();
   if (!session?.userId || session.role !== "VET") redirect("/unauthorized");

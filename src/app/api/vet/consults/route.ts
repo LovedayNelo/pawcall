@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { prisma } from "@/lib/db/prisma";
+import { getTenantContext } from "@/lib/tenant/context";
+
+async function getPrisma() {
+  const { tenantPrisma } = await getTenantContext();
+  if (!tenantPrisma) {
+    throw new Error("No tenant context available");
+  }
+  return tenantPrisma;
+}
 
 // Vet: list consults assigned to this vet
 export async function GET() {
@@ -8,6 +16,7 @@ export async function GET() {
   if (!session?.userId || session.role !== "VET")
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const prisma = await getPrisma();
   const consults = await prisma.consult.findMany({
     where: { vetId: session.userId, status: { in: ["QUEUED", "IN_PROGRESS"] } },
     include: {
@@ -28,6 +37,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { consultId, action } = body; // action: "accept" | "decline" | "start" | "complete"
 
+  const prisma = await getPrisma();
   const consult = await prisma.consult.findUnique({ where: { id: consultId } });
   if (!consult) return NextResponse.json({ error: "Consult not found" }, { status: 404 });
   if (consult.vetId && consult.vetId !== session.userId)

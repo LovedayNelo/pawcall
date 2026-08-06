@@ -1,12 +1,21 @@
-import { prisma } from "@/lib/db/prisma";
+import { getTenantContext } from "@/lib/tenant/context";
 import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import HeaderNav from "@/components/HeaderNav";
+
+async function getPrisma() {
+  const { tenantPrisma } = await getTenantContext();
+  if (!tenantPrisma) {
+    throw new Error("No tenant context available");
+  }
+  return tenantPrisma;
+}
 
 export default async function AdminVetVerificationPage() {
   const session = await getSession();
   if (session?.role !== "ADMIN") redirect("/unauthorized");
 
+  const prisma = await getPrisma();
   const profiles = await prisma.vetProfile.findMany({
     where: { verificationStatus: "PENDING" },
     include: { user: true, licenses: true },
@@ -67,7 +76,7 @@ export default async function AdminVetVerificationPage() {
 
 async function verifyVet(formData: FormData) {
   "use server";
-  const { prisma: db } = await import("@/lib/db/prisma");
+  const { getTenantContext } = await import("@/lib/tenant/context");
   const { getSession } = await import("@/lib/auth/session");
   const session = await getSession();
   if (session?.role !== "ADMIN") redirect("/unauthorized");
@@ -75,6 +84,9 @@ async function verifyVet(formData: FormData) {
   const userId = formData.get("userId")?.toString();
   const action = formData.get("action")?.toString();
   if (!userId || !action) return;
+
+  const { tenantPrisma: db } = await getTenantContext();
+  if (!db) throw new Error("No tenant context available");
 
   await db.vetProfile.updateMany({
     where: { userId },

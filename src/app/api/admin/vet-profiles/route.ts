@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { prisma } from "@/lib/db/prisma";
+import { getTenantContext } from "@/lib/tenant/context";
+
+async function getPrisma() {
+  const { tenantPrisma } = await getTenantContext();
+  if (!tenantPrisma) {
+    throw new Error("No tenant context available");
+  }
+  return tenantPrisma;
+}
 
 // Admin: list vet profiles pending verification
 export async function GET() {
   const session = await getSession();
   if (session?.role !== "ADMIN") return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
 
+  const prisma = await getPrisma();
   const profiles = await prisma.vetProfile.findMany({
     where: { verificationStatus: "PENDING" },
     include: { user: true, licenses: true },
@@ -22,6 +31,7 @@ export async function PUT(req: NextRequest) {
   const body = await req.json();
   const { userId, action, note } = body; // action: "approve" | "reject" | "suspend"
 
+  const prisma = await getPrisma();
   const update: Record<string, unknown> = {};
   switch (action) {
     case "approve":

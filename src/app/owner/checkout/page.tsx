@@ -4,6 +4,7 @@ import HeaderNav from "@/components/HeaderNav";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatKobo } from "@/lib/formatCurrency";
+import type { Stripe, StripeElements, StripeCardElement } from "@stripe/stripe-js";
 
 interface PaymentDetails {
   paymentId: string;
@@ -20,9 +21,9 @@ export default function CheckoutPage({ searchParams }: { searchParams: Promise<{
   const [details, setDetails] = useState<PaymentDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const stripeRef = useRef<any>(null);
-  const elementsRef = useRef<any>(null);
-  const cardRef = useRef<any>(null);
+  const stripeRef = useRef<Stripe | null>(null);
+  const elementsRef = useRef<StripeElements | null>(null);
+  const cardRef = useRef<StripeCardElement | null>(null);
 
   useEffect(() => {
     searchParams.then(setParams);
@@ -45,12 +46,11 @@ export default function CheckoutPage({ searchParams }: { searchParams: Promise<{
         stripeRef.current = await loadStripe(details.stripePublishableKey!);
         if (stripeRef.current && details.clientSecret) {
           elementsRef.current = stripeRef.current.elements({ clientSecret: details.clientSecret });
-          cardRef.current = elementsRef.current.create("cardElement");
+          cardRef.current = elementsRef.current.create("card");
           const container = document.getElementById("card-element");
           if (container) {
             cardRef.current.mount(container);
-            cardRef.current.on("error", (e: any) => setError(e.message));
-            cardRef.current.on("change", (e: any) => {
+            cardRef.current.on("change", (e) => {
               if (e.error) setError(e.error.message);
               else setError(null);
             });
@@ -95,9 +95,6 @@ export default function CheckoutPage({ searchParams }: { searchParams: Promise<{
         { payment_method: { card: cardRef.current } },
       );
       if (stripeError) throw stripeError;
-
-      // Confirm on the server side to capture funds
-      const confirm = await stripeRef.current.paymentIntents?.retrieve?.(paymentIntent.id);
 
       const res = await fetch("/api/owner/checkout", {
         method: "POST",

@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { prisma } from "@/lib/db/prisma";
+import { getTenantContext } from "@/lib/tenant/context";
 import { canPrescribeRemotely } from "@/domain/compliance/compliance";
-import type { ConsultOutcome } from "@/generated/prisma/client";
+import type { ConsultOutcome } from "@/generated/prisma/tenant/client";
+
+async function getPrisma() {
+  const { tenantPrisma } = await getTenantContext();
+  if (!tenantPrisma) {
+    throw new Error("No tenant context available");
+  }
+  return tenantPrisma;
+}
 
 // Vet: write a consult summary (SOAP); owner/admin: read it
 export async function GET(
@@ -13,6 +21,7 @@ export async function GET(
   if (!session?.userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { consultId } = await params;
+  const prisma = await getPrisma();
   const consult = await prisma.consult.findUnique({
     where: { id: consultId },
     include: { summary: true, pet: true, vet: true, referral: true },
@@ -37,6 +46,7 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { consultId } = await params;
+  const prisma = await getPrisma();
   const consult = await prisma.consult.findUnique({ where: { id: consultId } });
   if (!consult) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (consult.vetId !== session.userId)
